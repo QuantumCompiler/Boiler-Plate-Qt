@@ -1,0 +1,11 @@
+<RCC>
+    <qresource>
+        <file>src/QML/main.qml</file>
+        <file>src/QML/Pages/C++.qml</file>
+        <file>src/QML/Pages/Python.qml</file>
+        <file>src/QML/Components/RoundedButton.qml</file>
+        <file>src/QML/Components/DashboardHeader.qml</file>
+        <file>src/QML/Settings/Styles.qml</file>
+        <file>src/JS/helpers.js</file>
+    </qresource>
+</RCC>

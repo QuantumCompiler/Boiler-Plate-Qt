@@ -1,0 +1,166 @@
+#!/bin/bash
+
+# Build and run script for Qt application
+# This script should be run from the bin directory
+# Usage: 
+#   Mac.sh -b   "Builds the application and cleans old build"
+#   Mac.sh -r   "Runs the application"
+
+# Function to find the project root directory
+find_project_root() {
+    local current_dir="$(pwd)"
+    local search_dir="$current_dir"
+    
+    # If script is called via symlink, start from current working directory
+    # Otherwise, start from script directory
+    if [ -L "${BASH_SOURCE[0]}" ]; then
+        search_dir="$current_dir"
+    else
+        search_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        search_dir="$(dirname "$search_dir")"  # Go up one level from bin/
+    fi
+    
+    # Search upward for App.pro file
+    while [ "$search_dir" != "/" ]; do
+        if [ -f "$search_dir/App.pro" ]; then
+            echo "$search_dir"
+            return 0
+        fi
+        search_dir="$(dirname "$search_dir")"
+    done
+    
+    # If not found by going up, search in current directory and subdirectories
+    local app_pro_path
+    app_pro_path="$(find "$current_dir" -name "App.pro" -type f 2>/dev/null | head -1)"
+    if [ -n "$app_pro_path" ]; then
+        echo "$(dirname "$app_pro_path")"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Get the project directory
+PROJECT_DIR="$(find_project_root)"
+if [ $? -ne 0 ] || [ -z "$PROJECT_DIR" ]; then
+    echo "Error: Could not find App.pro file in current directory tree"
+    echo "Make sure you're running this script from within the project directory"
+    exit 1
+fi
+
+APP_PRO="$PROJECT_DIR/App.pro"
+
+# Function to display usage
+show_usage() {
+    echo "Usage: $0 [OPTION]"
+    echo "Options:"
+    echo "  -b    Build the application and clean old build"
+    echo "  -c    Clean build files only"
+    echo "  -h    Show this help message"
+    echo "  -r    Run the application"
+    echo "  -x    Build and run the application"
+}
+
+# Function to build the application
+build_application() {
+    echo "Building Qt application..."
+    echo "Project directory: $PROJECT_DIR"
+    echo "App.pro location: $APP_PRO"
+
+    # Check if App.pro exists
+    if [ ! -f "$APP_PRO" ]; then
+        echo "Error: App.pro not found at $APP_PRO"
+        exit 1
+    fi
+
+    # Generate Makefile with qmake
+    echo "Running qmake..."
+    cd "$PROJECT_DIR"
+    qmake "$APP_PRO"
+    if [ $? -ne 0 ]; then
+        echo "Error: qmake failed"
+        exit 1
+    fi
+
+    # Clean previous build
+    echo "Cleaning previous build..."
+    make clean
+    if [ $? -ne 0 ]; then
+        echo "Warning: make clean failed"
+    fi
+
+    # Build the application
+    echo "Building application..."
+    make
+    if [ $? -ne 0 ]; then
+        echo "Error: make failed"
+        exit 1
+    fi
+
+    echo "Build completed successfully!"
+}
+
+# Function to clean the build files
+clean_build() {
+    echo "Cleaning build files in project directory: $PROJECT_DIR"
+    cd "$PROJECT_DIR"
+    make clean
+    rm -rf main.app/
+    rm .qmake.stash
+    rm Makefile
+    if [ $? -ne 0 ]; then
+        echo "Warning: make clean failed"
+    else
+        echo "Clean completed successfully!"
+    fi
+}
+
+# Function to run the application
+run_application() {
+    echo "Running Qt application..."
+    
+    # Change to project directory
+    cd "$PROJECT_DIR"
+    
+    # Look for the executable (assuming it's named 'main' based on App.pro)
+    EXECUTABLE="./main.app/Contents/MacOS/main"
+    
+    if [ ! -f "$EXECUTABLE" ]; then
+        echo "Error: Executable not found at $EXECUTABLE"
+        echo "Make sure you have built the application first using: $0 -b"
+        exit 1
+    fi
+    
+    echo "Starting application: $EXECUTABLE"
+    $EXECUTABLE
+}
+
+# Parse command line arguments
+if [ $# -eq 0 ]; then
+    echo "Error: No arguments provided"
+    show_usage
+    exit 1
+fi
+
+case "$1" in
+    -b)
+        build_application
+        ;;
+    -c)
+        clean_build
+        ;;
+    -h|--help)
+        show_usage
+        ;;
+    -r)
+        run_application
+        ;;
+    -x)
+        build_application && run_application
+        ;;
+    *)
+        echo "Error: Unknown option '$1'"
+        show_usage
+        exit 1
+        ;;
+esac

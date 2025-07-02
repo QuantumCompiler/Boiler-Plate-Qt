@@ -1,1 +1,7 @@
 .DS_Store
+moc_*
+qrc_*
+*.o
+.qmake.stash
+main
+!.vscode/

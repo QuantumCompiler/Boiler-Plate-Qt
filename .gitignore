@@ -5,3 +5,4 @@ qrc_*
 .qmake.stash
 main
 !.vscode/
+build/

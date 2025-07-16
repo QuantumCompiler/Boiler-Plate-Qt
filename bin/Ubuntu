@@ -1,10 +1,6 @@
 #!/bin/bash
 
-# Build and run script for Qt application
-# This script should be run from the bin directory
-# Usage: 
-#   Mac.sh -b   "Builds the application and cleans old build"
-#   Mac.sh -r   "Runs the application"
+# Build and run script for Qt application using CMake
 
 # Function to find the project root directory
 find_project_root() {
@@ -20,9 +16,9 @@ find_project_root() {
         search_dir="$(dirname "$search_dir")"  # Go up one level from bin/
     fi
     
-    # Search upward for App.pro file
+    # Search upward for CMakeLists.txt file
     while [ "$search_dir" != "/" ]; do
-        if [ -f "$search_dir/App.pro" ]; then
+        if [ -f "$search_dir/CMakeLists.txt" ]; then
             echo "$search_dir"
             return 0
         fi
@@ -30,10 +26,10 @@ find_project_root() {
     done
     
     # If not found by going up, search in current directory and subdirectories
-    local app_pro_path
-    app_pro_path="$(find "$current_dir" -name "App.pro" -type f 2>/dev/null | head -1)"
-    if [ -n "$app_pro_path" ]; then
-        echo "$(dirname "$app_pro_path")"
+    local cmake_file_path
+    cmake_file_path="$(find "$current_dir" -name "CMakeLists.txt" -type f 2>/dev/null | head -1)"
+    if [ -n "$cmake_file_path" ]; then
+        echo "$(dirname "$cmake_file_path")"
         return 0
     fi
     
@@ -43,12 +39,13 @@ find_project_root() {
 # Get the project directory
 PROJECT_DIR="$(find_project_root)"
 if [ $? -ne 0 ] || [ -z "$PROJECT_DIR" ]; then
-    echo "Error: Could not find App.pro file in current directory tree"
+    echo "Error: Could not find CMakeLists.txt file in current directory tree"
     echo "Make sure you're running this script from within the project directory"
     exit 1
 fi
 
-APP_PRO="$PROJECT_DIR/App.pro"
+CMAKE_FILE="$PROJECT_DIR/CMakeLists.txt"
+BUILD_DIR="$PROJECT_DIR/build"
 
 # Function to display usage
 show_usage() {
@@ -59,81 +56,151 @@ show_usage() {
     echo "  -h    Show this help message"
     echo "  -r    Run the application"
     echo "  -x    Build and run the application"
+    echo "  -d    Build in debug mode"
+    echo "  -rel  Build in release mode"
+    echo "  -deps Check and install Qt dependencies"
+}
+
+# Function to check Qt dependencies
+check_dependencies() {
+    echo "Checking Qt6 dependencies for Ubuntu/Linux..."
+    
+    # Check if cmake is installed
+    if ! command -v cmake &> /dev/null; then
+        echo "Error: cmake is not installed"
+        echo "Install with: sudo apt update && sudo apt install cmake"
+        exit 1
+    fi
+    
+    # Check if Qt6 is available
+    if ! pkg-config --exists Qt6Core; then
+        echo "Warning: Qt6 development packages may not be installed"
+        echo "Consider installing with:"
+        echo "  sudo apt update"
+        echo "  sudo apt install qt6-base-dev qt6-declarative-dev qt6-controls2-dev"
+        echo "  sudo apt install qt6-quick-dev qml6-module-qtquick-controls"
+        echo ""
+        echo "Or for Qt5 compatibility:"
+        echo "  sudo apt install qtbase5-dev qtdeclarative5-dev qtquickcontrols2-5-dev"
+        echo ""
+        read -p "Continue anyway? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    else
+        echo "Qt6 development packages found!"
+    fi
+    
+    # Check for ninja (optional but faster)
+    if command -v ninja &> /dev/null; then
+        echo "Ninja build system detected - will use for faster builds"
+        export CMAKE_GENERATOR="Ninja"
+    fi
+    
+    echo "Dependency check completed."
 }
 
 # Function to build the application
 build_application() {
-    echo "Building Qt application..."
+    local build_type="${1:-Debug}"  # Default to Debug if not specified
+    
+    echo "Building Qt application with CMake..."
     echo "Project directory: $PROJECT_DIR"
-    echo "App.pro location: $APP_PRO"
+    echo "CMakeLists.txt location: $CMAKE_FILE"
+    echo "Build type: $build_type"
 
-    # Check if App.pro exists
-    if [ ! -f "$APP_PRO" ]; then
-        echo "Error: App.pro not found at $APP_PRO"
+    # Check if CMakeLists.txt exists
+    if [ ! -f "$CMAKE_FILE" ]; then
+        echo "Error: CMakeLists.txt not found at $CMAKE_FILE"
         exit 1
     fi
 
-    # Generate Makefile with qmake
-    echo "Running qmake..."
-    cd "$PROJECT_DIR"
-    qmake "$APP_PRO"
-    if [ $? -ne 0 ]; then
-        echo "Error: qmake failed"
-        exit 1
+    # Create build directory if it doesn't exist
+    if [ ! -d "$BUILD_DIR" ]; then
+        echo "Creating build directory..."
+        mkdir -p "$BUILD_DIR"
     fi
 
-    # Clean previous build
-    echo "Cleaning previous build..."
-    make clean
+    # Change to build directory
+    cd "$BUILD_DIR"
+
+    # Configure with CMake
+    echo "Running cmake configure..."
+    if [ -n "$CMAKE_GENERATOR" ]; then
+        cmake -G "$CMAKE_GENERATOR" -DCMAKE_BUILD_TYPE="$build_type" ..
+    else
+        cmake -DCMAKE_BUILD_TYPE="$build_type" ..
+    fi
+    
     if [ $? -ne 0 ]; then
-        echo "Warning: make clean failed"
+        echo "Error: cmake configure failed"
+        echo "Try running: $0 -deps to check dependencies"
+        exit 1
     fi
 
     # Build the application
     echo "Building application..."
-    make
+    cmake --build . --parallel $(nproc)
     if [ $? -ne 0 ]; then
-        echo "Error: make failed"
+        echo "Error: cmake build failed"
         exit 1
     fi
 
     echo "Build completed successfully!"
+    echo "Executable location: $BUILD_DIR/main"
 }
 
 # Function to clean the build files
 clean_build() {
-    echo "Cleaning build files in project directory: $PROJECT_DIR"
-    cd "$PROJECT_DIR"
-    make clean
-    rm main
-    rm .qmake.stash
-    rm Makefile
-    if [ $? -ne 0 ]; then
-        echo "Warning: make clean failed"
+    echo "Cleaning build files in: $BUILD_DIR"
+    
+    if [ -d "$BUILD_DIR" ]; then
+        cd "$BUILD_DIR"
+        if [ -f "Makefile" ] || [ -f "build.ninja" ]; then
+            cmake --build . --target clean
+        fi
+        
+        # Remove the entire build directory for a complete clean
+        cd "$PROJECT_DIR"
+        rm -rf "$BUILD_DIR"
+        echo "Build directory removed successfully!"
     else
-        echo "Clean completed successfully!"
+        echo "Build directory does not exist, nothing to clean."
     fi
 }
 
 # Function to run the application
 run_application() {
     echo "Running Qt application..."
-
-    # Change to project directory
-    cd "$PROJECT_DIR"
-
-    # Look for the executable (assuming it's named 'main' based on App.pro)
-    # On Ubuntu, the built executable is usually just 'main' in the project root
-    EXECUTABLE="./main"
-
+    
+    # Look for the executable (on Linux, it's directly named 'main')
+    EXECUTABLE="$BUILD_DIR/main"
+    
     if [ ! -f "$EXECUTABLE" ]; then
         echo "Error: Executable not found at $EXECUTABLE"
         echo "Make sure you have built the application first using: $0 -b"
         exit 1
     fi
-
+    
     echo "Starting application: $EXECUTABLE"
-    $EXECUTABLE
+    
+    # Change to build directory and run
+    cd "$BUILD_DIR"
+    
+    # Check if we have a display (for headless systems)
+    if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
+        echo "Warning: No display detected. Make sure you're running in a graphical environment."
+        echo "For headless systems, you might need to set up X11 forwarding or VNC."
+    fi
+    
+    # Set LD_LIBRARY_PATH if needed for Qt libraries
+    if [ -n "$QT_DIR" ]; then
+        export LD_LIBRARY_PATH="$QT_DIR/lib:$LD_LIBRARY_PATH"
+    fi
+    
+    # Run the executable
+    ./main
 }
 
 # Parse command line arguments
@@ -145,10 +212,19 @@ fi
 
 case "$1" in
     -b)
-        build_application
+        build_application "Debug"
+        ;;
+    -d)
+        build_application "Debug"
+        ;;
+    -rel)
+        build_application "Release"
         ;;
     -c)
         clean_build
+        ;;
+    -deps)
+        check_dependencies
         ;;
     -h|--help)
         show_usage
@@ -157,7 +233,7 @@ case "$1" in
         run_application
         ;;
     -x)
-        build_application && run_application
+        build_application "Debug" && run_application
         ;;
     *)
         echo "Error: Unknown option '$1'"

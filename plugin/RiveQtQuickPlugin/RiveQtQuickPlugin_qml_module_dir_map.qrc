@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/">
+    <file alias="/RiveQtQuickPlugin">/Users/taylor/.Data/Development/Projects/Rive-QtQuick-Plugin/build/binary/RiveQtQuickPlugin</file>
+
+  </qresource>
+</RCC>

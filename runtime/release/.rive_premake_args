@@ -1,1 +1,0 @@
-gmake2 --config=release --out=out/release --with_rive_text --with_rive_layout

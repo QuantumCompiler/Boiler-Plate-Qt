@@ -1,1 +1,0 @@
-gmake2 --config=debug --out=out/debug --with_rive_text --with_rive_layout

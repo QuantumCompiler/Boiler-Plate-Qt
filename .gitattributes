@@ -1,3 +1,0 @@
-runtime/debug/*.a filter=lfs diff=lfs merge=lfs -text
-runtime/debug/librive.a filter=lfs diff=lfs merge=lfs -text
-runtime/debug/librive_harfbuzz.a filter=lfs diff=lfs merge=lfs -text
